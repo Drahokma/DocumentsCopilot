@@ -2,8 +2,7 @@ import 'server-only';
 
 import { genSaltSync, hashSync } from 'bcrypt-ts';
 import { and, asc, desc, eq, gt, gte, inArray } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+
 
 import {
   user,
@@ -15,16 +14,23 @@ import {
   type Message,
   message,
   vote,
+  fileAttachment,
+  type FileAttachment,
+  resources,
+  NewResourceParams,
+  insertResourceSchema,
 } from './schema';
 import { ArtifactKind } from '@/components/artifact';
+import { generateUUID } from '@/lib/utils';
+import { generateEmbeddings } from '../ai/embeddings';
+import { embeddings as embeddingsTable } from './schema';
+import { db } from './index';
 
 // Optionally, if not using email/pass login, you can
 // use the Drizzle adapter for Auth.js / NextAuth
 // https://authjs.dev/reference/adapter/drizzle
 
-// biome-ignore lint: Forbidden non-null assertion.
-const client = postgres(process.env.POSTGRES_URL!);
-const db = drizzle(client);
+
 
 export async function getUser(email: string): Promise<Array<User>> {
   try {
@@ -345,3 +351,125 @@ export async function updateChatVisiblityById({
     throw error;
   }
 }
+
+export async function createResourceFromFile(content: string) {
+  try {
+    const { content: validatedContent } = insertResourceSchema.parse({ content });
+
+    const [resource] = await db
+      .insert(resources)
+      .values({ content: validatedContent })
+      .returning();
+
+    const embeddings = await generateEmbeddings(validatedContent);
+    await db.insert(embeddingsTable).values(
+      embeddings.map(embedding => ({
+        resourceId: resource.id,
+        ...embedding,
+      })),
+    );
+
+    return resource.id;
+  } catch (error) {
+    console.error('Failed to create resource from file', error);
+    throw error;
+  }
+}
+
+export async function saveFileAttachment({
+  chatId,
+  userId,
+  fileName,
+  fileType,
+  contentType,
+  url,
+  size,
+  content,
+}: {
+  chatId: string;
+  userId: string;
+  fileName: string;
+  fileType: 'template' | 'source';
+  contentType: string;
+  url: string;
+  size: number;
+  content?: string;
+}) {
+  try {
+    // Check if chat exists
+    const existingChat = await getChatById({ id: chatId });
+    
+    // If chat doesn't exist, create it
+    if (!existingChat) {
+      await saveChat({
+        id: chatId,
+        userId,
+        title: `File Upload: ${fileName}`, // Default title, can be updated later
+      });
+    }
+
+    // Create a resource if content is provided
+    let resourceId = null;
+    if (content) {
+      resourceId = await createResourceFromFile(content);
+    }
+
+    return await db.insert(fileAttachment).values({
+      id: generateUUID(),
+      chatId,
+      userId,
+      fileName,
+      fileType,
+      contentType,
+      url,
+      size,
+      resourceId,
+      createdAt: new Date(),
+    });
+  } catch (error) {
+    console.error('Failed to save file attachment in database', error);
+    throw error;
+  }
+}
+
+export async function getFileAttachmentsByChatId({
+  chatId,
+}: {
+  chatId: string;
+}) {
+  try {
+    return await db
+      .select()
+      .from(fileAttachment)
+      .where(eq(fileAttachment.chatId, chatId))
+      .orderBy(fileAttachment.createdAt);
+  } catch (error) {
+    console.error('Failed to get file attachments from database');
+    throw error;
+  }
+}
+
+export const createResource = async (input: NewResourceParams) => {
+  try {
+    const { content } = insertResourceSchema.parse(input);
+
+    const [resource] = await db
+      .insert(resources)
+      .values({ content })
+      .returning();
+
+    const embeddings = await generateEmbeddings(content);
+    await db.insert(embeddingsTable).values(
+      embeddings.map(embedding => ({
+        resourceId: resource.id,
+        ...embedding,
+      })),
+    );
+
+    return 'Resource successfully created and embedded.';
+  } catch (error) {
+    return error instanceof Error && error.message.length > 0
+      ? error.message
+      : 'Error, please try again.';
+  }
+};

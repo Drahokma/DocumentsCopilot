@@ -25,7 +25,9 @@ import { getWeather } from '@/lib/ai/tools/get-weather';
 import { isProductionEnvironment } from '@/lib/constants';
 import { NextResponse } from 'next/server';
 import { myProvider } from '@/lib/ai/providers';
-
+import { getFileInformation } from '@/lib/ai/tools/get-file-information';
+import { analyzeTemplateStructure } from '@/lib/ai/tools/analyze-template-structure';
+import { writeTemplateSection } from '@/lib/ai/tools/write-template-section';
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
@@ -85,6 +87,9 @@ export async function POST(request: Request) {
                   'createDocument',
                   'updateDocument',
                   'requestSuggestions',
+                  'getFileInformation',
+                  'analyzeTemplateStructure',
+                  'writeTemplateSection',
                 ],
           experimental_transform: smoothStream({ chunking: 'word' }),
           experimental_generateMessageId: generateUUID,
@@ -96,6 +101,21 @@ export async function POST(request: Request) {
               session,
               dataStream,
             }),
+            getFileInformation: getFileInformation({
+              session,
+              dataStream,
+              chatId: id,
+            }),
+            analyzeTemplateStructure: analyzeTemplateStructure({
+              session,
+              dataStream,
+              chatId: id,
+            }),
+            writeTemplateSection: writeTemplateSection({
+              session,
+              dataStream,
+              chatId: id,
+            }),
           },
           onFinish: async ({ response, reasoning }) => {
             if (session.user?.id) {
@@ -106,18 +126,16 @@ export async function POST(request: Request) {
                 });
 
                 await saveMessages({
-                  messages: sanitizedResponseMessages.map((message) => {
-                    return {
-                      id: message.id,
-                      chatId: id,
-                      role: message.role,
-                      content: message.content,
-                      createdAt: new Date(),
-                    };
-                  }),
+                  messages: sanitizedResponseMessages.map((message) => ({
+                    id: message.id,
+                    chatId: id,
+                    role: message.role,
+                    content: message.content,
+                    createdAt: new Date(),
+                  })),
                 });
               } catch (error) {
-                console.error('Failed to save chat');
+                console.error('Failed to save chat:', error);
               }
             }
           },
@@ -138,7 +156,10 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    return NextResponse.json({ error }, { status: 400 });
+    console.error('Chat API error:', error);
+    return NextResponse.json({ 
+      error: error instanceof Error ? error.message : 'An unexpected error occurred' 
+    }, { status: 500 });
   }
 }
 

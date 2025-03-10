@@ -8,7 +8,7 @@ import { ChatHeader } from '@/components/chat-header';
 import type { Vote } from '@/lib/db/schema';
 import { fetcher, generateUUID } from '@/lib/utils';
 import { Artifact } from './artifact';
-import { MultimodalInput } from './multimodal-input';
+import { DocumentCopilotInput } from './document-copilot-input';
 import { Messages } from './messages';
 import { VisibilityType } from './visibility-selector';
 import { useArtifactSelector } from '@/hooks/use-artifact';
@@ -39,6 +39,7 @@ export function Chat({
     isLoading,
     stop,
     reload,
+    error,
   } = useChat({
     id,
     body: { id, selectedChatModel: selectedChatModel },
@@ -49,8 +50,9 @@ export function Chat({
     onFinish: () => {
       mutate('/api/history');
     },
-    onError: () => {
-      toast.error('An error occured, please try again!');
+    onError: (error) => {
+      console.error('Chat error:', error);
+      toast.error(`An error occurred: ${error.message || 'Please try again'}`);
     },
   });
 
@@ -61,6 +63,20 @@ export function Chat({
 
   const [attachments, setAttachments] = useState<Array<Attachment>>([]);
   const isArtifactVisible = useArtifactSelector((state) => state.isVisible);
+
+  const handleMessageSubmit = async (event?: { preventDefault?: () => void }) => {
+    if (event?.preventDefault) {
+      event.preventDefault();
+    }
+    console.log('handleMessageSubmit', event);
+    
+    try {
+      await handleSubmit(event);
+    } catch (error) {
+      console.error('Error submitting message:', error);
+      toast.error(`Failed to send message: ${error instanceof Error ? error.message : 'Please try again'}`);
+    }
+  };
 
   return (
     <>
@@ -85,11 +101,11 @@ export function Chat({
 
         <form className="flex mx-auto px-4 bg-background pb-4 md:pb-6 gap-2 w-full md:max-w-3xl">
           {!isReadonly && (
-            <MultimodalInput
+            <DocumentCopilotInput
               chatId={id}
               input={input}
               setInput={setInput}
-              handleSubmit={handleSubmit}
+              handleSubmit={handleMessageSubmit}
               isLoading={isLoading}
               stop={stop}
               attachments={attachments}
@@ -106,7 +122,7 @@ export function Chat({
         chatId={id}
         input={input}
         setInput={setInput}
-        handleSubmit={handleSubmit}
+        handleSubmit={handleMessageSubmit}
         isLoading={isLoading}
         stop={stop}
         attachments={attachments}

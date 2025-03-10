@@ -18,7 +18,7 @@ import useSWR, { useSWRConfig } from 'swr';
 import { useDebounceCallback, useWindowSize } from 'usehooks-ts';
 import type { Document, Vote } from '@/lib/db/schema';
 import { fetcher } from '@/lib/utils';
-import { MultimodalInput } from './multimodal-input';
+import { DocumentCopilotInput } from './document-copilot-input';
 import { Toolbar } from './toolbar';
 import { VersionFooter } from './version-footer';
 import { ArtifactActions } from './artifact-actions';
@@ -335,7 +335,7 @@ function PureArtifact({
                 />
 
                 <form className="flex flex-row gap-2 relative items-end w-full px-4 pb-4">
-                  <MultimodalInput
+                  <DocumentCopilotInput
                     chatId={chatId}
                     input={input}
                     setInput={setInput}
@@ -346,7 +346,6 @@ function PureArtifact({
                     setAttachments={setAttachments}
                     messages={messages}
                     append={append}
-                    className="bg-background dark:bg-muted"
                     setMessages={setMessages}
                   />
                 </form>
