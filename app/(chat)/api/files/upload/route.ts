@@ -58,16 +58,8 @@ export async function POST(request: Request) {
     const fileType = formData.get('fileType') as 'template' | 'source';
     const chatId = formData.get('chatId') as string;
     
-    if (!file) {
-      return new Response('No file provided', { status: 400 });
-    }
-    
-    if (!chatId) {
-      return new Response('No chat ID provided', { status: 400 });
-    }
-    
-    if (!fileType) {
-      return new Response('No file type provided', { status: 400 });
+    if (!file || !chatId || !fileType) {
+      return new Response('Missing required fields', { status: 400 });
     }
     
     // Validate file size and type
@@ -79,26 +71,26 @@ export async function POST(request: Request) {
       return new Response(`File type not supported. Supported types: ${ALLOWED_MIME_TYPES.join(', ')}`, { status: 400 });
     }
     
-    // Extract content from file
-    let content;
-    if (file.type === 'text/plain' || file.type === 'application/json' || file.type === 'text/csv') {
-      content = await file.text();
-    } else if (file.type === 'application/pdf') {
-      // Implement PDF extraction if needed
-      content = await file.text(); // For now, basic text extraction
-    } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-      // Handle Word documents
-      const arrayBuffer = await file.arrayBuffer();
-      const result = await mammoth.extractRawText({ buffer: Buffer.from(arrayBuffer) });
-      content = result.value;
-    }
-
     // Upload file to blob storage
     const blob = await put(`chats/${chatId}/${file.name}`, file, {
       access: 'public',
     });
+
+    // Extract content from file
+    let content;
+    if (fileType === 'source') {
+      if (file.type === 'text/plain' || file.type === 'application/json' || file.type === 'text/csv') {
+        content = await file.text();
+      } else if (file.type === 'application/pdf') {
+        content = await file.text(); // Basic text extraction for now
+      } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ buffer: Buffer.from(arrayBuffer) });
+        content = result.value;
+      }
+    }
     
-    // Save file attachment in database with content
+    // Save file attachment in database, only process content for source files
     await saveFileAttachment({
       chatId,
       userId: session.user.id ?? '',
@@ -107,7 +99,7 @@ export async function POST(request: Request) {
       contentType: file.type,
       url: blob.url,
       size: file.size,
-      content, // Pass the extracted content
+      content: fileType === 'source' ? content : undefined, // Only save content for source files
     });
     
     return NextResponse.json({

@@ -18,6 +18,7 @@ import { createAzure } from '@ai-sdk/azure';
 const azure = createAzure({
   apiKey: process.env.AZURE_OPENAI_API_KEY!,
   baseURL: process.env.AZURE_BASE_URL!,
+  apiVersion: '2025-01-01-preview',
 })
 
 export const myProvider = isTestEnvironment
@@ -42,7 +43,7 @@ export const myProvider = isTestEnvironment
         'chat-model-large': azure('gpt-4o'),
         'chat-model-reasoning': azure('o3-mini'),
         'title-model': azure('gpt-4o'),
-        'artifact-model': azure('gpt-4o-mini'),
+        'artifact-model': azure('o3-mini'),
       },
       imageModels: {
         'small-model': azure.image('dall-e-2'),

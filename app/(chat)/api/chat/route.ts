@@ -25,22 +25,26 @@ import { getWeather } from '@/lib/ai/tools/get-weather';
 import { isProductionEnvironment } from '@/lib/constants';
 import { NextResponse } from 'next/server';
 import { myProvider } from '@/lib/ai/providers';
-import { getFileInformation } from '@/lib/ai/tools/get-file-information';
-import { analyzeTemplateStructure } from '@/lib/ai/tools/analyze-template-structure';
-import { writeTemplateSection } from '@/lib/ai/tools/write-template-section';
+
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
+    const body = await request.json();
+
     const {
       id,
       messages,
       selectedChatModel,
+      templateContent,
+      sourceFiles,
     }: {
       id: string;
       messages: Array<Message>;
       selectedChatModel: string;
-    } = await request.json();
+      templateContent: string | null;
+      sourceFiles: Array<{ name: string; content: string }>;
+    } = body;
 
     const session = await auth();
 
@@ -62,6 +66,7 @@ export async function POST(request: Request) {
       });
 
       await saveChat({ id, userId: session.user.id, title });
+      console.log('chat saved');
     } else {
       if (chat.userId !== session.user.id) {
         return new Response('Unauthorized', { status: 401 });
@@ -69,52 +74,72 @@ export async function POST(request: Request) {
     }
 
     await saveMessages({
-      messages: [{ ...userMessage, createdAt: new Date(), chatId: id }],
+      messages: [{ 
+        ...userMessage, 
+        createdAt: new Date(), 
+        chatId: id,
+        documentId: null,
+        documentCreatedAt: null 
+      }],
     });
 
+    // Always use the reasoning model when files are present
+    const modelToUse = templateContent || sourceFiles?.length > 0 
+      ? 'chat-model-reasoning' 
+      : selectedChatModel;
+
+    console.log('modelToUse', modelToUse);
+
+    // Build file context if available
+    let fileContext = '';
+    if (templateContent) {
+      fileContext += `Template Content:\n${templateContent}\n\n`;
+    }
+    
+    if (sourceFiles?.length > 0) {
+      fileContext += 'Source Files:\n';
+      sourceFiles.forEach(file => {
+        fileContext += `File: ${file.name}\n${file.content}\n\n`;
+      });
+    }
+
+    // Prepare document data for createDocument tool
+    const documentData = {
+      templateContent: templateContent || '',
+      sourceFiles: sourceFiles || []
+    };
+
+    console.log('documentData', documentData);
+
+    // Unified approach for all chats
     return createDataStreamResponse({
       execute: (dataStream) => {
         const result = streamText({
-          model: myProvider.languageModel(selectedChatModel),
-          system: systemPrompt({ selectedChatModel }),
+          model: myProvider.languageModel(modelToUse),
+          system: fileContext 
+            ? `${systemPrompt({ selectedChatModel: modelToUse })}\n\nContext:\n${fileContext}`
+            : systemPrompt({ selectedChatModel: modelToUse }),
           messages,
           maxSteps: 5,
-          experimental_activeTools:
-            selectedChatModel === 'chat-model-reasoning'
-              ? []
-              : [
-                  'getWeather',
-                  'createDocument',
-                  'updateDocument',
-                  'requestSuggestions',
-                  'getFileInformation',
-                  'analyzeTemplateStructure',
-                  'writeTemplateSection',
-                ],
+          experimental_activeTools: [
+            'getWeather',
+            'createDocument',
+            'updateDocument',
+            'requestSuggestions',
+          ],
           experimental_transform: smoothStream({ chunking: 'word' }),
           experimental_generateMessageId: generateUUID,
           tools: {
             getWeather,
-            createDocument: createDocument({ session, dataStream }),
+            createDocument: createDocument({ 
+              session, 
+              dataStream, 
+              documentData,
+            }),
             updateDocument: updateDocument({ session, dataStream }),
             requestSuggestions: requestSuggestions({
               session,
               dataStream,
-            }),
-            getFileInformation: getFileInformation({
-              session,
-              dataStream,
-              chatId: id,
-            }),
-            analyzeTemplateStructure: analyzeTemplateStructure({
-              session,
-              dataStream,
-              chatId: id,
-            }),
-            writeTemplateSection: writeTemplateSection({
-              session,
-              dataStream,
-              chatId: id,
             }),
           },
           onFinish: async ({ response, reasoning }) => {
@@ -132,6 +157,8 @@ export async function POST(request: Request) {
                     role: message.role,
                     content: message.content,
                     createdAt: new Date(),
+                    documentId: null,
+                    documentCreatedAt: null
                   })),
                 });
               } catch (error) {
@@ -146,13 +173,13 @@ export async function POST(request: Request) {
         });
 
         result.consumeStream();
-
         result.mergeIntoDataStream(dataStream, {
           sendReasoning: true,
         });
       },
-      onError: () => {
-        return 'Oops, an error occured!';
+      onError: (error) => {
+        console.error('Chat API error:', error);
+        return 'Oops, an error occurred!';
       },
     });
   } catch (error) {

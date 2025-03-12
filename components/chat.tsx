@@ -13,6 +13,8 @@ import { Messages } from './messages';
 import { VisibilityType } from './visibility-selector';
 import { useArtifactSelector } from '@/hooks/use-artifact';
 import { toast } from 'sonner';
+import { FileSelectionPanel } from '@/components/file-selection-panel';
+import { getFileContent } from '@/lib/utils/file-helpers';
 
 export function Chat({
   id,
@@ -28,6 +30,8 @@ export function Chat({
   isReadonly: boolean;
 }) {
   const { mutate } = useSWRConfig();
+  const [selectedTemplateFile, setSelectedTemplateFile] = useState<File | null>(null);
+  const [selectedSourceFiles, setSelectedSourceFiles] = useState<File[]>([]);
 
   const {
     messages,
@@ -68,10 +72,32 @@ export function Chat({
     if (event?.preventDefault) {
       event.preventDefault();
     }
-    console.log('handleMessageSubmit', event);
     
     try {
-      await handleSubmit(event);
+      // Extract content from template and source files
+      let templateContent = null;
+      if (selectedTemplateFile) {
+        templateContent = await getFileContent(selectedTemplateFile);
+      }
+
+      const sourceFiles = await Promise.all(
+        selectedSourceFiles.map(async (file) => ({
+          name: file.name,
+          content: await getFileContent(file)
+        }))
+      );
+
+      // Pass file content to handleSubmit
+      const options = {
+        body: {
+          templateContent,
+          sourceFiles
+        }
+      }
+
+      console.log('options', options);
+
+      handleSubmit(event, options);
     } catch (error) {
       console.error('Error submitting message:', error);
       toast.error(`Failed to send message: ${error instanceof Error ? error.message : 'Please try again'}`);
@@ -80,42 +106,55 @@ export function Chat({
 
   return (
     <>
-      <div className="flex flex-col min-w-0 h-dvh bg-background">
-        <ChatHeader
-          chatId={id}
-          selectedModelId={selectedChatModel}
-          selectedVisibilityType={selectedVisibilityType}
-          isReadonly={isReadonly}
-        />
+      <div className="flex h-dvh">
+        <div className="flex-1 flex flex-col min-w-0 bg-background">
+          <ChatHeader
+            chatId={id}
+            selectedModelId={selectedChatModel}
+            selectedVisibilityType={selectedVisibilityType}
+            isReadonly={isReadonly}
+          />
+          <Messages
+            chatId={id}
+            isLoading={isLoading}
+            votes={votes}
+            messages={messages}
+            setMessages={setMessages}
+            reload={reload}
+            isReadonly={isReadonly}
+            isArtifactVisible={isArtifactVisible}
+          />
+          <form className="sticky bottom-0 mx-auto px-4 bg-background pb-4 md:pb-6 gap-2 w-full md:max-w-3xl">
+            {!isReadonly && (
+              <DocumentCopilotInput
+                chatId={id}
+                input={input}
+                setInput={setInput}
+                handleSubmit={handleMessageSubmit}
+                isLoading={isLoading}
+                stop={stop}
+                attachments={attachments}
+                setAttachments={setAttachments}
+                messages={messages}
+                setMessages={setMessages}
+                append={append}
+              />
+            )}
+          </form>
+        </div>
 
-        <Messages
-          chatId={id}
-          isLoading={isLoading}
-          votes={votes}
-          messages={messages}
-          setMessages={setMessages}
-          reload={reload}
-          isReadonly={isReadonly}
-          isArtifactVisible={isArtifactVisible}
-        />
-
-        <form className="flex mx-auto px-4 bg-background pb-4 md:pb-6 gap-2 w-full md:max-w-3xl">
-          {!isReadonly && (
-            <DocumentCopilotInput
-              chatId={id}
-              input={input}
-              setInput={setInput}
-              handleSubmit={handleMessageSubmit}
+        {!isReadonly && (
+          <div className="hidden md:block w-64 shrink-0">
+            <FileSelectionPanel
+              selectedTemplateFile={selectedTemplateFile}
+              setSelectedTemplateFile={setSelectedTemplateFile}
+              selectedSourceFiles={selectedSourceFiles}
+              setSelectedSourceFiles={setSelectedSourceFiles}
               isLoading={isLoading}
-              stop={stop}
-              attachments={attachments}
-              setAttachments={setAttachments}
-              messages={messages}
-              setMessages={setMessages}
-              append={append}
+              setInput={setInput}
             />
-          )}
-        </form>
+          </div>
+        )}
       </div>
 
       <Artifact

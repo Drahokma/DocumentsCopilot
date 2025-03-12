@@ -10,6 +10,9 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
 
+
+  console.log('id ', id)
+  
   if (!id) {
     return new Response('Missing id', { status: 400 });
   }

@@ -1,5 +1,3 @@
-CREATE EXTENSION IF NOT EXISTS vector;
-
 CREATE TABLE IF NOT EXISTS "Chat" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"createdAt" timestamp NOT NULL,
@@ -43,7 +41,8 @@ CREATE TABLE IF NOT EXISTS "Message" (
 	"chatId" uuid NOT NULL,
 	"role" varchar NOT NULL,
 	"content" json NOT NULL,
-	"createdAt" timestamp NOT NULL
+	"createdAt" timestamp NOT NULL,
+	"documentId" uuid
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "resources" (
@@ -117,6 +116,12 @@ END $$;
 --> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "Message" ADD CONSTRAINT "Message_chatId_Chat_id_fk" FOREIGN KEY ("chatId") REFERENCES "public"."Chat"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "Message" ADD CONSTRAINT "Message_documentId_Document_id_fk" FOREIGN KEY ("documentId") REFERENCES "public"."Document"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;

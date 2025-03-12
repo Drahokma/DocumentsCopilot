@@ -46,6 +46,8 @@ export const message = pgTable('Message', {
   role: varchar('role').notNull(),
   content: json('content').notNull(),
   createdAt: timestamp('createdAt').notNull(),
+  documentId: uuid('documentId'),
+  documentCreatedAt: timestamp('documentCreatedAt'),
 });
 
 export type Message = InferSelectModel<typeof message>;
@@ -174,3 +176,11 @@ export const insertResourceSchema = z.object({
 });
 
 export type NewResourceParams = z.infer<typeof insertResourceSchema>;
+
+export const messageDocumentFk = foreignKey({
+  columns: [message.documentId, message.documentCreatedAt],
+  foreignColumns: [document.id, document.createdAt],
+  name: 'message_document_fk'
+});
+
+

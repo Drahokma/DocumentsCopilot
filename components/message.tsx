@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { memo, useState } from 'react';
 import type { Vote } from '@/lib/db/schema';
 import { DocumentToolCall, DocumentToolResult } from './document';
-import { PencilEditIcon, SparklesIcon } from './icons';
+import { PencilEditIcon, SparklesIcon, FileIcon } from './icons';
 import { Markdown } from './markdown';
 import { MessageActions } from './message-actions';
 import { PreviewAttachment } from './preview-attachment';
@@ -18,6 +18,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 import { MessageEditor } from './message-editor';
 import { DocumentPreview } from './document-preview';
 import { MessageReasoning } from './message-reasoning';
+import { useArtifact } from '@/hooks/use-artifact';
+import { toast } from 'sonner';
+
+interface ExtendedMessage extends Message {
+  documentId?: string;
+}
 
 const PurePreviewMessage = ({
   chatId,
@@ -30,7 +36,7 @@ const PurePreviewMessage = ({
   index,
 }: {
   chatId: string;
-  message: Message;
+  message: ExtendedMessage;
   vote: Vote | undefined;
   isLoading: boolean;
   setMessages: (
@@ -43,6 +49,79 @@ const PurePreviewMessage = ({
   index: number;
 }) => {
   const [mode, setMode] = useState<'view' | 'edit'>('view');
+  const { setArtifact } = useArtifact();
+
+  // Check if this message contains an artifact (look for the markdown artifact markers)
+  const hasArtifact = typeof message.content === 'string' && 
+    message.content.includes('<!-- BEGIN_MARKDOWN_ARTIFACT -->') && 
+    message.content.includes('<!-- END_MARKDOWN_ARTIFACT -->');
+  
+  // Check if a document is being generated (has beginning marker but not end marker yet)
+  const isGeneratingArtifact = typeof message.content === 'string' && 
+    message.content.includes('<!-- BEGIN_MARKDOWN_ARTIFACT -->') && 
+    !message.content.includes('<!-- END_MARKDOWN_ARTIFACT -->');
+
+  console.log('hasArtifact', hasArtifact);
+  // Extract artifact title if present
+  const getArtifactTitle = (): string => {
+    if (!hasArtifact || typeof message.content !== 'string') return 'Document';
+    
+    const beginIndex = message.content.indexOf('<!-- BEGIN_MARKDOWN_ARTIFACT -->');
+    const contentStart = beginIndex + '<!-- BEGIN_MARKDOWN_ARTIFACT -->'.length;
+    const titleMatch = message.content.substring(contentStart).match(/# (.*?)(?:\n|$)/);
+    
+    return titleMatch ? titleMatch[1] : 'Document';
+  };
+  
+  const artifactTitle = getArtifactTitle();
+
+  const getArtifactContent = (): string => {
+    if (!hasArtifact || typeof message.content !== 'string') return '';
+    
+    const beginIndex = message.content.indexOf('<!-- BEGIN_MARKDOWN_ARTIFACT -->');
+    const endIndex = message.content.indexOf('<!-- END_MARKDOWN_ARTIFACT -->');
+    
+    if (beginIndex !== -1 && endIndex !== -1) {
+      return message.content.substring(
+        beginIndex + '<!-- BEGIN_MARKDOWN_ARTIFACT -->'.length,
+        endIndex
+      ).trim();
+    }
+    
+    return '';
+  };
+
+  // Function to open the artifact when button is clicked
+  const handleOpenArtifact = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (isReadonly) {
+      toast.error('Viewing files in shared chats is currently not supported.');
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const boundingBox = {
+      top: rect.top,
+      left: rect.left,
+      width: rect.width,
+      height: rect.height,
+    };
+
+    // Use existing documentId if available, otherwise generate a UUID without prefix
+
+    const documentId = message.documentId || crypto.randomUUID();
+
+    console.log('documentId', documentId);
+
+    setArtifact({
+      documentId,
+      kind: 'text',
+      content: getArtifactContent(),
+      title: artifactTitle,
+      isVisible: true,
+      status: 'idle',
+      boundingBox,
+    });
+  };
 
   return (
     <AnimatePresence>
@@ -118,7 +197,36 @@ const PurePreviewMessage = ({
                       message.role === 'user',
                   })}
                 >
-                  <Markdown>{message.content as string}</Markdown>
+                  {hasArtifact ? (
+                    <button
+                      type="button"
+                      className="bg-background cursor-pointer border py-2 px-3 rounded-xl w-fit flex flex-row gap-3 items-start"
+                      onClick={handleOpenArtifact}
+                    >
+                      <div className="text-muted-foreground mt-1">
+                        <FileIcon />
+                      </div>
+                      <div className="text-left">
+                        {`View document "${artifactTitle}"`}
+                      </div>
+                    </button>
+                  ) : isGeneratingArtifact ? (
+                    <button
+                      type="button"
+                      className="bg-background cursor-pointer border py-2 px-3 rounded-xl w-fit flex flex-row gap-3 items-start opacity-70"
+                      disabled={true}
+                    >
+                      <div className="text-muted-foreground mt-1">
+                        <FileIcon />
+                      </div>
+                      <div className="text-left flex items-center gap-2">
+                        <span>Creating document</span>
+                        <div className="animate-pulse">...</div>
+                      </div>
+                    </button>
+                  ) : (
+                    <Markdown>{message.content as string}</Markdown>
+                  )}
                 </div>
               </div>
             )}

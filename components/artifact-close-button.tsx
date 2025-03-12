@@ -4,7 +4,7 @@ import { Button } from './ui/button';
 import { initialArtifactData, useArtifact } from '@/hooks/use-artifact';
 
 function PureArtifactCloseButton() {
-  const { setArtifact } = useArtifact();
+  const { artifact, setArtifact } = useArtifact();
 
   return (
     <Button
@@ -17,7 +17,12 @@ function PureArtifactCloseButton() {
                 ...currentArtifact,
                 isVisible: false,
               }
-            : { ...initialArtifactData, status: 'idle' },
+            : { 
+                ...currentArtifact,
+                isVisible: false,
+                // Keep the document data for reopening
+                // don't reset to initialArtifactData
+              },
         );
       }}
     >
@@ -26,4 +31,5 @@ function PureArtifactCloseButton() {
   );
 }
 
-export const ArtifactCloseButton = memo(PureArtifactCloseButton, () => true);
+export default memo(PureArtifactCloseButton);
+export { PureArtifactCloseButton as ArtifactCloseButton };

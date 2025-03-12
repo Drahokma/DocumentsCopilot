@@ -16,11 +16,17 @@ export interface SaveDocumentProps {
   userId: string;
 }
 
+export interface DocumentData {
+  templateContent?: string;
+  sourceFiles?: Array<{ name: string; content: string }>;
+}
+
 export interface CreateDocumentCallbackProps {
   id: string;
   title: string;
   dataStream: DataStreamWriter;
   session: Session;
+  documentData?: DocumentData;
 }
 
 export interface UpdateDocumentCallbackProps {
@@ -28,6 +34,7 @@ export interface UpdateDocumentCallbackProps {
   description: string;
   dataStream: DataStreamWriter;
   session: Session;
+  documentData?: DocumentData;
 }
 
 export interface DocumentHandler<T = ArtifactKind> {
@@ -49,6 +56,7 @@ export function createDocumentHandler<T extends ArtifactKind>(config: {
         title: args.title,
         dataStream: args.dataStream,
         session: args.session,
+        documentData: args.documentData,
       });
 
       if (args.session?.user?.id) {
@@ -69,6 +77,7 @@ export function createDocumentHandler<T extends ArtifactKind>(config: {
         description: args.description,
         dataStream: args.dataStream,
         session: args.session,
+        documentData: args.documentData,
       });
 
       if (args.session?.user?.id) {

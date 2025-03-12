@@ -5,6 +5,7 @@ import { useEffect, useRef } from 'react';
 import { artifactDefinitions, ArtifactKind } from './artifact';
 import { Suggestion } from '@/lib/db/schema';
 import { initialArtifactData, useArtifact } from '@/hooks/use-artifact';
+import { Message } from '@/lib/db/schema';
 
 export type DataStreamDelta = {
   type:
@@ -17,13 +18,17 @@ export type DataStreamDelta = {
     | 'suggestion'
     | 'clear'
     | 'finish'
-    | 'kind';
+    | 'kind'
+    | 'message-metadata';
   content: string | Suggestion;
+  messageId?: string;
+  documentId?: string;
 };
 
 export function DataStreamHandler({ id }: { id: string }) {
   const { data: dataStream } = useChat({ id });
   const { artifact, setArtifact, setMetadata } = useArtifact();
+  const { messages, setMessages } = useChat({ id });
   const lastProcessedIndex = useRef(-1);
 
   useEffect(() => {
@@ -85,12 +90,28 @@ export function DataStreamHandler({ id }: { id: string }) {
               status: 'idle',
             };
 
+          case 'message-metadata':
+            if ('messageId' in delta && 'documentId' in delta) {
+              setMessages((prevMessages) => 
+                prevMessages.map((msg) => {
+                  if (msg.id === delta.messageId) {
+                    return {
+                      ...msg,
+                      documentId: delta.documentId
+                    };
+                  }
+                  return msg;
+                })
+              );
+            }
+            return draftArtifact;
+
           default:
             return draftArtifact;
         }
       });
     });
-  }, [dataStream, setArtifact, setMetadata, artifact]);
+  }, [dataStream, setArtifact, setMetadata, artifact, setMessages]);
 
   return null;
 }

@@ -1,5 +1,5 @@
 {
-  "id": "595a41ba-097c-4e0b-b0a6-e0e2973fc0d9",
+  "id": "1f3b763f-aa76-4f14-8715-1a2eee8352a8",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -341,6 +341,12 @@
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true
+        },
+        "documentId": {
+          "name": "documentId",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -351,6 +357,19 @@
           "tableTo": "Chat",
           "columnsFrom": [
             "chatId"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "Message_documentId_Document_id_fk": {
+          "name": "Message_documentId_Document_id_fk",
+          "tableFrom": "Message",
+          "tableTo": "Document",
+          "columnsFrom": [
+            "documentId"
           ],
           "columnsTo": [
             "id"

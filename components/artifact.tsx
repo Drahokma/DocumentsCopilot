@@ -122,20 +122,33 @@ function PureArtifact({
       if (mostRecentDocument) {
         setDocument(mostRecentDocument);
         setCurrentVersionIndex(documents.length - 1);
-        setArtifact((currentArtifact) => ({
-          ...currentArtifact,
-          content: mostRecentDocument.content ?? '',
-        }));
+        
+        // Only update content if it's not already set or if the new content is different
+        setArtifact((currentArtifact) => {
+          if (!currentArtifact.content || currentArtifact.content !== mostRecentDocument.content) {
+            return {
+              ...currentArtifact,
+              content: mostRecentDocument.content ?? '',
+            };
+          }
+          return currentArtifact;
+        });
       }
     }
   }, [documents, setArtifact]);
 
   useEffect(() => {
-    mutateDocuments();
-  }, [artifact.status, mutateDocuments]);
+    if (artifact.isVisible) {
+      mutateDocuments();
+    }
+  }, [artifact.status, artifact.isVisible, mutateDocuments]);
 
   const { mutate } = useSWRConfig();
   const [isContentDirty, setIsContentDirty] = useState(false);
+
+  console.log('messages', messages);
+  console.log('artifact', artifact);
+  console.log('isContentDirty', isContentDirty);
 
   const handleContentChange = useCallback(
     (updatedContent: string) => {
@@ -514,7 +527,7 @@ export const Artifact = memo(PureArtifact, (prevProps, nextProps) => {
   if (prevProps.isLoading !== nextProps.isLoading) return false;
   if (!equal(prevProps.votes, nextProps.votes)) return false;
   if (prevProps.input !== nextProps.input) return false;
-  if (!equal(prevProps.messages, nextProps.messages.length)) return false;
+  if (!equal(prevProps.messages, nextProps.messages)) return false;
 
   return true;
 });

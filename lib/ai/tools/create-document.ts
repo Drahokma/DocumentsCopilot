@@ -10,57 +10,46 @@ import {
 interface CreateDocumentProps {
   session: Session;
   dataStream: DataStreamWriter;
+  documentData?: {
+    templateContent?: string;
+    sourceFiles?: Array<{ name: string; content: string }>;
+  };
 }
 
-export const createDocument = ({ session, dataStream }: CreateDocumentProps) =>
+export const createDocument = ({ session, dataStream, documentData }: CreateDocumentProps) =>
   tool({
     description:
-      'Create a document for a writing or content creation activities. This tool will call other functions that will generate the contents of the document based on the title and kind.',
+      'Create a document using the provided title and kind. For substantial content (>10 lines), structured documents, or reusable content (essays, emails, code). When template content is provided, maintains template structure and formatting while extracting relevant information from source files to fill template sections appropriately.',
     parameters: z.object({
-      title: z.string(),
-      kind: z.enum(artifactKinds),
+      title: z.string().describe('The title of the document to create'),
+      kind: z.enum(artifactKinds).describe('The kind of document to create (text, code, sheet, etc.)'),
     }),
-    execute: async ({ title, kind }) => {
+    execute: async ({ title, kind}) => {
       const id = generateUUID();
-
-      dataStream.writeData({
-        type: 'kind',
-        content: kind,
-      });
-
-      dataStream.writeData({
-        type: 'id',
-        content: id,
-      });
-
-      dataStream.writeData({
-        type: 'title',
-        content: title,
-      });
-
-      dataStream.writeData({
-        type: 'clear',
-        content: '',
-      });
-
+  
+      dataStream.writeData({ type: 'kind', content: kind });
+      dataStream.writeData({ type: 'id', content: id });
+      dataStream.writeData({ type: 'title', content: title });
+      dataStream.writeData({ type: 'clear', content: '' });
+  
       const documentHandler = documentHandlersByArtifactKind.find(
-        (documentHandlerByArtifactKind) =>
-          documentHandlerByArtifactKind.kind === kind,
+        (documentHandlerByArtifactKind) => documentHandlerByArtifactKind.kind === kind,
       );
-
+  
       if (!documentHandler) {
         throw new Error(`No document handler found for kind: ${kind}`);
       }
-
+  
       await documentHandler.onCreateDocument({
         id,
         title,
         dataStream,
         session,
+        documentData,
       });
-
+  
       dataStream.writeData({ type: 'finish', content: '' });
-
+  
       return {
         id,
         title,
