@@ -11,6 +11,7 @@ import { Markdown } from './markdown';
 import { MessageActions } from './message-actions';
 import { PreviewAttachment } from './preview-attachment';
 import { Weather } from './weather';
+import { ToolFileUpload } from './tool-file-upload';
 import equal from 'fast-deep-equal';
 import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
@@ -20,7 +21,9 @@ import { DocumentPreview } from './document-preview';
 import { MessageReasoning } from './message-reasoning';
 import { useArtifact } from '@/hooks/use-artifact';
 import { toast } from 'sonner';
+import { FileUploadInterface } from './file-upload-interface';
 
+// Extend the Message type to include documentId
 interface ExtendedMessage extends Message {
   documentId?: string;
 }
@@ -55,13 +58,7 @@ const PurePreviewMessage = ({
   const hasArtifact = typeof message.content === 'string' && 
     message.content.includes('<!-- BEGIN_MARKDOWN_ARTIFACT -->') && 
     message.content.includes('<!-- END_MARKDOWN_ARTIFACT -->');
-  
-  // Check if a document is being generated (has beginning marker but not end marker yet)
-  const isGeneratingArtifact = typeof message.content === 'string' && 
-    message.content.includes('<!-- BEGIN_MARKDOWN_ARTIFACT -->') && 
-    !message.content.includes('<!-- END_MARKDOWN_ARTIFACT -->');
 
-  console.log('hasArtifact', hasArtifact);
   // Extract artifact title if present
   const getArtifactTitle = (): string => {
     if (!hasArtifact || typeof message.content !== 'string') return 'Document';
@@ -74,6 +71,7 @@ const PurePreviewMessage = ({
   };
   
   const artifactTitle = getArtifactTitle();
+  
 
   const getArtifactContent = (): string => {
     if (!hasArtifact || typeof message.content !== 'string') return '';
@@ -91,7 +89,10 @@ const PurePreviewMessage = ({
     return '';
   };
 
-  // Function to open the artifact when button is clicked
+  const isStreamingArtifact = typeof message.content === 'string' && 
+    message.content.includes('<!-- BEGIN_MARKDOWN_ARTIFACT -->') && 
+    !message.content.includes('<!-- END_MARKDOWN_ARTIFACT -->');
+
   const handleOpenArtifact = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (isReadonly) {
       toast.error('Viewing files in shared chats is currently not supported.');
@@ -106,11 +107,8 @@ const PurePreviewMessage = ({
       height: rect.height,
     };
 
-    // Use existing documentId if available, otherwise generate a UUID without prefix
-
-    const documentId = message.documentId || crypto.randomUUID();
-
-    console.log('documentId', documentId);
+    // Create a unique document ID for this artifact if needed
+    const documentId = message.documentId || `doc-${message.id}`;
 
     setArtifact({
       documentId,
@@ -197,7 +195,25 @@ const PurePreviewMessage = ({
                       message.role === 'user',
                   })}
                 >
-                  {hasArtifact ? (
+                  {isStreamingArtifact ? (
+                    <div className="flex flex-col gap-2">
+                      <button
+                        type="button"
+                        className="bg-background cursor-pointer border py-2 px-3 rounded-xl w-fit flex flex-row gap-3 items-start"
+                        onClick={handleOpenArtifact}
+                      >
+                        <div className="text-muted-foreground mt-1">
+                          <FileIcon />
+                        </div>
+                        <div className="text-left">
+                          Generating document...
+                        </div>
+                      </button>
+                      <div className="text-sm text-muted-foreground pl-2">
+                        Content will appear in the document viewer
+                      </div>
+                    </div>
+                  ) : hasArtifact ? (
                     <button
                       type="button"
                       className="bg-background cursor-pointer border py-2 px-3 rounded-xl w-fit flex flex-row gap-3 items-start"
@@ -208,20 +224,6 @@ const PurePreviewMessage = ({
                       </div>
                       <div className="text-left">
                         {`View document "${artifactTitle}"`}
-                      </div>
-                    </button>
-                  ) : isGeneratingArtifact ? (
-                    <button
-                      type="button"
-                      className="bg-background cursor-pointer border py-2 px-3 rounded-xl w-fit flex flex-row gap-3 items-start opacity-70"
-                      disabled={true}
-                    >
-                      <div className="text-muted-foreground mt-1">
-                        <FileIcon />
-                      </div>
-                      <div className="text-left flex items-center gap-2">
-                        <span>Creating document</span>
-                        <div className="animate-pulse">...</div>
                       </div>
                     </button>
                   ) : (
@@ -274,6 +276,93 @@ const PurePreviewMessage = ({
                             result={result}
                             isReadonly={isReadonly}
                           />
+                        ) : toolName === 'uploadTemplate' ? (
+                          <div className="mb-4">
+                            <div className="text-sm text-muted-foreground mb-2">
+                              {result.message}
+                            </div>
+                            {result.guidance && (
+                              <div className="text-sm text-muted-foreground mb-3">
+                                {result.guidance}
+                              </div>
+                            )}
+                            {result.action === 'upload_interface_opened' && (
+                              <FileUploadInterface
+                                chatId={chatId}
+                                userId={result.userId || ''}
+                                acceptedTypes={[
+                                  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                  'application/pdf',
+                                  'application/msword',
+                                  'text/plain'
+                                ]}
+                                maxSize={10 * 1024 * 1024}
+                                fileType="template"
+                                multiple={false}
+                                onUploadComplete={() => {
+                                  reload();
+                                }}
+                                onClose={() => {
+                                  // Optional: handle close if needed
+                                }}
+                              />
+                            )}
+                          </div>
+                        ) : toolName === 'uploadSourceFiles' ? (
+                          <div className="mb-4">
+                            <div className="text-sm text-muted-foreground mb-2">
+                              {result.message}
+                            </div>
+                            {result.guidance && (
+                              <div className="text-sm text-muted-foreground mb-3">
+                                {result.guidance}
+                              </div>
+                            )}
+                            {result.action === 'upload_interface_opened' && (
+                              <FileUploadInterface
+                                chatId={chatId}
+                                userId={result.userId || ''}
+                                acceptedTypes={[
+                                  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                  'application/pdf',
+                                  'application/msword',
+                                  'text/plain',
+                                  'text/csv',
+                                  'application/json',
+                                  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                                  'image/jpeg',
+                                  'image/png',
+                                  'image/gif',
+                                  'image/webp'
+                                ]}
+                                maxSize={10 * 1024 * 1024}
+                                fileType="source"
+                                multiple={true}
+                                onUploadComplete={() => {
+                                  reload();
+                                }}
+                                onClose={() => {
+                                  // Optional: handle close if needed
+                                }}
+                              />
+                            )}
+                          </div>
+                        ) : toolName === 'regulatoryDocumentWorkflow' ? (
+                          <div className="mb-4">
+                            <div className="text-sm text-muted-foreground mb-2">
+                              {result.message}
+                            </div>
+                            {result.workflowSummary && (
+                              <div className="mt-2 p-3 bg-muted rounded-lg">
+                                <div className="text-sm font-medium mb-2">Workflow Summary:</div>
+                                <div className="text-sm space-y-1">
+                                  <div>Template: {result.workflowSummary.templateStatus}</div>
+                                  <div>Source Files: {result.workflowSummary.sourceFilesStatus}</div>
+                                  <div>Document: {result.workflowSummary.documentGenerated ? 'Generated successfully' : 'Generation failed'}</div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         ) : (
                           <pre>{JSON.stringify(result, null, 2)}</pre>
                         )}
@@ -303,6 +392,14 @@ const PurePreviewMessage = ({
                           args={args}
                           isReadonly={isReadonly}
                         />
+                      ) : toolName === 'uploadTemplate' || toolName === 'uploadSourceFiles' ? (
+                        <div className="text-sm text-muted-foreground">
+                          Processing {toolName === 'uploadTemplate' ? 'template' : 'source files'}...
+                        </div>
+                      ) : toolName === 'regulatoryDocumentWorkflow' ? (
+                        <div className="text-sm text-muted-foreground">
+                          Starting regulatory document workflow...
+                        </div>
                       ) : null}
                     </div>
                   );

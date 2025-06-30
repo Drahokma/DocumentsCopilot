@@ -89,6 +89,14 @@ export const codeArtifact = new Artifact<'code', Metadata>({
         status: 'streaming',
       }));
     }
+    
+    if (streamPart.type === 'finish') {
+      setArtifact((draftArtifact) => ({
+        ...draftArtifact,
+        status: 'idle',
+        isVisible: true, // Always make visible when finished
+      }));
+    }
   },
   content: ({ metadata, setMetadata, ...props }) => {
     return (

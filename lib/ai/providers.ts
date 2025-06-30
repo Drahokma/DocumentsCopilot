@@ -25,10 +25,11 @@ export const myProvider = isTestEnvironment
   ? customProvider({
       languageModels: {
         'chat-model-small': azure('gpt-4o-mini'),
-        'chat-model-large': azure('gpt-4o'),
-        'chat-model-reasoning': azure('o3-mini'),
-        'title-model': azure('gpt-4o'),
-        'artifact-model': azure('gpt-4o-mini'),
+        'chat-model-large': azure('gpt-4.1'),
+        'chat-model-reasoning': azure('o3-pro'),
+
+        'title-model': azure('gpt-4.1'),
+        'artifact-model': azure('gpt-4.1'),
       },
       textEmbeddingModels: {
         'embedding-model': azure.textEmbeddingModel('text-embedding-3-large', {
@@ -40,10 +41,10 @@ export const myProvider = isTestEnvironment
   : customProvider({
       languageModels: {
         'chat-model-small': azure('gpt-4o-mini'),
-        'chat-model-large': azure('gpt-4o'),
-        'chat-model-reasoning': azure('o3-mini'),
-        'title-model': azure('gpt-4o'),
-        'artifact-model': azure('o3-mini'),
+        'chat-model-large': azure('gpt-4.1'),
+        'chat-model-reasoning': azure('o3-pro'),
+        'title-model': azure('gpt-4.1'),
+        'artifact-model': azure('o3-pro'),
       },
       imageModels: {
         'small-model': azure.image('dall-e-2'),

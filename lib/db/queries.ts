@@ -41,6 +41,16 @@ export async function getUser(email: string): Promise<Array<User>> {
   }
 }
 
+export async function getUserById(id: string): Promise<User | null> {
+  try {
+    const [foundUser] = await db.select().from(user).where(eq(user.id, id));
+    return foundUser || null;
+  } catch (error) {
+    console.error('Failed to get user by id from database');
+    throw error;
+  }
+}
+
 export async function createUser(email: string, password: string) {
   const salt = genSaltSync(10);
   const hash = hashSync(password, salt);
@@ -49,6 +59,19 @@ export async function createUser(email: string, password: string) {
     return await db.insert(user).values({ email, password: hash });
   } catch (error) {
     console.error('Failed to create user in database');
+    throw error;
+  }
+}
+
+export async function createOAuthUser(id: string, email: string) {
+  try {
+    return await db.insert(user).values({ 
+      id,
+      email, 
+      password: null // OAuth users don't have passwords
+    });
+  } catch (error) {
+    console.error('Failed to create OAuth user in database');
     throw error;
   }
 }
@@ -112,7 +135,17 @@ export async function getChatById({ id }: { id: string }) {
 
 export async function saveMessages({ messages }: { messages: Array<Message> }) {
   try {
-    return await db.insert(message).values(messages);
+    // Use an upsert operation to handle duplicate IDs gracefully
+    for (const msg of messages) {
+      await db.insert(message).values(msg).onConflictDoUpdate({
+        target: message.id,
+        set: {
+          content: msg.content,
+          createdAt: msg.createdAt,
+        },
+      });
+    }
+    return { success: true };
   } catch (error) {
     console.error('Failed to save messages in database', error);
     throw error;
@@ -354,7 +387,17 @@ export async function updateChatVisiblityById({
 
 export async function createResourceFromFile(content: string) {
   try {
-    const { content: validatedContent } = insertResourceSchema.parse({ content });
+    // Sanitize content to remove null bytes and other problematic characters
+    const sanitizedContent = content
+      .replace(/\0/g, '') // Remove null bytes
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Remove other control characters except \n, \r, \t
+      .trim();
+
+    if (!sanitizedContent) {
+      throw new Error('Content is empty after sanitization');
+    }
+
+    const { content: validatedContent } = insertResourceSchema.parse({ content: sanitizedContent });
 
     const [resource] = await db
       .insert(resources)
@@ -445,6 +488,36 @@ export async function getFileAttachmentsByChatId({
       .orderBy(fileAttachment.createdAt);
   } catch (error) {
     console.error('Failed to get file attachments from database');
+    throw error;
+  }
+}
+
+export async function getFileAttachmentsWithContentByChatId({
+  chatId,
+}: {
+  chatId: string;
+}) {
+  try {
+    return await db
+      .select({
+        id: fileAttachment.id,
+        chatId: fileAttachment.chatId,
+        userId: fileAttachment.userId,
+        fileName: fileAttachment.fileName,
+        fileType: fileAttachment.fileType,
+        contentType: fileAttachment.contentType,
+        url: fileAttachment.url,
+        size: fileAttachment.size,
+        resourceId: fileAttachment.resourceId,
+        createdAt: fileAttachment.createdAt,
+        content: resources.content,
+      })
+      .from(fileAttachment)
+      .leftJoin(resources, eq(fileAttachment.resourceId, resources.id))
+      .where(eq(fileAttachment.chatId, chatId))
+      .orderBy(fileAttachment.createdAt);
+  } catch (error) {
+    console.error('Failed to get file attachments with content from database');
     throw error;
   }
 }

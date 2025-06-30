@@ -11,6 +11,8 @@ import {
   getChatById,
   saveChat,
   saveMessages,
+  saveDocument,
+  getFileAttachmentsWithContentByChatId,
 } from '@/lib/db/queries';
 import {
   generateUUID,
@@ -22,9 +24,13 @@ import { createDocument } from '@/lib/ai/tools/create-document';
 import { updateDocument } from '@/lib/ai/tools/update-document';
 import { requestSuggestions } from '@/lib/ai/tools/request-suggestions';
 import { getWeather } from '@/lib/ai/tools/get-weather';
+import { uploadTemplate } from '@/lib/ai/tools/upload-template';
+import { uploadSourceFiles } from '@/lib/ai/tools/upload-source-files';
+import { regulatoryDocumentWorkflow } from '@/lib/ai/tools/regulatory-document-workflow';
 import { isProductionEnvironment } from '@/lib/constants';
 import { NextResponse } from 'next/server';
 import { myProvider } from '@/lib/ai/providers';
+import { getUserById, createOAuthUser } from '@/lib/db/queries';
 
 export const maxDuration = 60;
 
@@ -52,6 +58,19 @@ export async function POST(request: Request) {
       return new Response('Unauthorized', { status: 401 });
     }
 
+    // Ensure user exists in database
+    try {
+      const existingUser = await getUserById(session.user.id);
+      if (!existingUser) {
+        // Create OAuth user if doesn't exist
+        console.log('Creating OAuth user:', session.user.email, 'with ID:', session.user.id);
+        await createOAuthUser(session.user.id, session.user.email!);
+      }
+    } catch (error) {
+      console.error('Error ensuring user exists:', error);
+      return new Response('User validation failed', { status: 500 });
+    }
+
     const userMessage = getMostRecentUserMessage(messages);
 
     if (!userMessage) {
@@ -65,8 +84,13 @@ export async function POST(request: Request) {
         message: userMessage,
       });
 
-      await saveChat({ id, userId: session.user.id, title });
-      console.log('chat saved');
+      try {
+        await saveChat({ id, userId: session.user.id, title });
+        console.log('chat saved');
+      } catch (error) {
+        console.error('Failed to save chat:', error);
+        return new Response('Failed to save chat', { status: 500 });
+      }
     } else {
       if (chat.userId !== session.user.id) {
         return new Response('Unauthorized', { status: 401 });
@@ -78,38 +102,68 @@ export async function POST(request: Request) {
         ...userMessage, 
         createdAt: new Date(), 
         chatId: id,
-        documentId: null,
-        documentCreatedAt: null 
       }],
     });
 
-    // Always use the reasoning model when files are present
-    const modelToUse = templateContent || sourceFiles?.length > 0 
-      ? 'chat-model-reasoning' 
-      : selectedChatModel;
+    // Load uploaded files from database
+    let dbTemplateContent = '';
+    let dbSourceFiles: Array<{ name: string; content: string }> = [];
+    
+    try {
+      const uploadedFiles = await getFileAttachmentsWithContentByChatId({ chatId: id });
+      
+      // Get template files
+      const templateFiles = uploadedFiles.filter(file => file.fileType === 'template' && file.content);
+      if (templateFiles.length > 0) {
+        // Use the most recent template
+        const latestTemplate = templateFiles[0];
+        dbTemplateContent = latestTemplate.content || '';
+        console.log('Loaded template from database:', latestTemplate.fileName);
+      }
+      
+      // Get source files
+      const sourceFileAttachments = uploadedFiles.filter(file => file.fileType === 'source' && file.content);
+      dbSourceFiles = sourceFileAttachments.map(file => ({
+        name: file.fileName,
+        content: file.content || ''
+      }));
+      console.log('Loaded source files from database:', dbSourceFiles.length);
+      
+    } catch (error) {
+      console.error('Failed to load uploaded files from database:', error);
+    }
 
-    console.log('modelToUse', modelToUse);
+    // Combine database files with request body files (request body takes precedence)
+    const finalTemplateContent = templateContent || dbTemplateContent;
+    const finalSourceFiles = sourceFiles?.length > 0 ? sourceFiles : dbSourceFiles;
 
     // Build file context if available
     let fileContext = '';
-    if (templateContent) {
-      fileContext += `Template Content:\n${templateContent}\n\n`;
+    if (finalTemplateContent) {
+      fileContext += `Template Content:\n${finalTemplateContent}\n\n`;
     }
     
-    if (sourceFiles?.length > 0) {
+    if (finalSourceFiles?.length > 0) {
       fileContext += 'Source Files:\n';
-      sourceFiles.forEach(file => {
+      finalSourceFiles.forEach(file => {
         fileContext += `File: ${file.name}\n${file.content}\n\n`;
       });
     }
 
     // Prepare document data for createDocument tool
     const documentData = {
-      templateContent: templateContent || '',
-      sourceFiles: sourceFiles || []
+      templateContent: finalTemplateContent || '',
+      sourceFiles: finalSourceFiles || []
     };
 
     console.log('documentData', documentData);
+
+    // Always use the reasoning model when files are present
+    const modelToUse = finalTemplateContent || finalSourceFiles?.length > 0 
+      ? 'chat-model-reasoning' 
+      : selectedChatModel;
+
+    console.log('modelToUse', modelToUse);
 
     // Unified approach for all chats
     return createDataStreamResponse({
@@ -126,6 +180,9 @@ export async function POST(request: Request) {
             'createDocument',
             'updateDocument',
             'requestSuggestions',
+            'uploadTemplate',
+            'uploadSourceFiles',
+            'regulatoryDocumentWorkflow',
           ],
           experimental_transform: smoothStream({ chunking: 'word' }),
           experimental_generateMessageId: generateUUID,
@@ -141,6 +198,21 @@ export async function POST(request: Request) {
               session,
               dataStream,
             }),
+            uploadTemplate: uploadTemplate({ 
+              session, 
+              dataStream, 
+              chatId: id 
+            }),
+            uploadSourceFiles: uploadSourceFiles({ 
+              session, 
+              dataStream, 
+              chatId: id 
+            }),
+            regulatoryDocumentWorkflow: regulatoryDocumentWorkflow({ 
+              session, 
+              dataStream, 
+              chatId: id 
+            }),
           },
           onFinish: async ({ response, reasoning }) => {
             if (session.user?.id) {
@@ -150,15 +222,52 @@ export async function POST(request: Request) {
                   reasoning,
                 });
 
+                const processedMessages = await Promise.all(sanitizedResponseMessages.map(async (message) => {
+                  if (typeof message.content === 'string') {
+                    const beginIndex = message.content.indexOf('<!-- BEGIN_MARKDOWN_ARTIFACT -->');
+                    const endIndex = message.content.indexOf('<!-- END_MARKDOWN_ARTIFACT -->');
+                    
+                    if (beginIndex !== -1 && endIndex !== -1) {
+                      // Extract artifact content
+                      const artifactContent = message.content.substring(
+                        beginIndex + '<!-- BEGIN_MARKDOWN_ARTIFACT -->'.length,
+                        endIndex
+                      ).trim();
+                      
+                      const titleMatch = artifactContent.match(/^#\s+(.+)$/m);
+                      const title = titleMatch ? titleMatch[1] : 'Document';
+                      
+                      const documentId = generateUUID();
+                      
+                      if (session.user?.id) {
+                        await saveDocument({
+                          id: documentId,
+                          title: title,
+                          content: artifactContent,
+                          kind: 'text',
+                          userId: session.user.id,
+                        });
+                      }
+                      
+                      return {
+                        ...message,
+                        documentId: documentId
+                      };
+                    }
+                  }
+                  return {
+                    ...message,
+                    documentId: null
+                  };
+                }));
+
                 await saveMessages({
-                  messages: sanitizedResponseMessages.map((message) => ({
+                  messages: processedMessages.map((message) => ({
                     id: message.id,
                     chatId: id,
                     role: message.role,
                     content: message.content,
                     createdAt: new Date(),
-                    documentId: null,
-                    documentCreatedAt: null
                   })),
                 });
               } catch (error) {

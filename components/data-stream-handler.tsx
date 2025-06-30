@@ -49,6 +49,34 @@ export function DataStreamHandler({ id }: { id: string }) {
           setMetadata,
         });
       }
+      console.log('delta', delta);
+
+
+      if (delta.type === 'text-delta' && messages?.length > 0) {
+        const lastMessage = messages[messages.length - 1];
+        if (lastMessage && typeof lastMessage.content === 'string') {
+          const hasBeginMarker = lastMessage.content.includes('<!-- BEGIN_MARKDOWN_ARTIFACT -->');
+          const hasEndMarker = lastMessage.content.includes('<!-- END_MARKDOWN_ARTIFACT -->');
+          
+          console.log('hasBeginMarker', hasBeginMarker);
+          console.log('hasEndMarker', hasEndMarker);
+          if (hasBeginMarker && !hasEndMarker) {
+            const beginMarkerIndex = lastMessage.content.indexOf('<!-- BEGIN_MARKDOWN_ARTIFACT -->');
+            const contentAfterMarker = lastMessage.content.substring(
+              beginMarkerIndex + '<!-- BEGIN_MARKDOWN_ARTIFACT -->'.length
+            );
+            
+            setArtifact((draftArtifact) => ({
+              ...draftArtifact,
+              documentId: lastMessage.id,
+              kind: 'text',
+              content: contentAfterMarker,
+              isVisible: true,
+              status: 'streaming',
+            }));
+          }
+        }
+      }
 
       setArtifact((draftArtifact) => {
         if (!draftArtifact) {
@@ -92,12 +120,16 @@ export function DataStreamHandler({ id }: { id: string }) {
 
           case 'message-metadata':
             if ('messageId' in delta && 'documentId' in delta) {
+              const documentId = typeof delta.documentId === 'string' && delta.documentId.startsWith('doc-')
+                ? delta.documentId.replace('doc-', '')
+                : delta.documentId;
+              
               setMessages((prevMessages) => 
                 prevMessages.map((msg) => {
                   if (msg.id === delta.messageId) {
                     return {
                       ...msg,
-                      documentId: delta.documentId
+                      documentId
                     };
                   }
                   return msg;
@@ -111,7 +143,7 @@ export function DataStreamHandler({ id }: { id: string }) {
         }
       });
     });
-  }, [dataStream, setArtifact, setMetadata, artifact, setMessages]);
+  }, [dataStream, setArtifact, setMetadata, artifact, setMessages, messages]);
 
   return null;
 }

@@ -146,10 +146,6 @@ function PureArtifact({
   const { mutate } = useSWRConfig();
   const [isContentDirty, setIsContentDirty] = useState(false);
 
-  console.log('messages', messages);
-  console.log('artifact', artifact);
-  console.log('isContentDirty', isContentDirty);
-
   const handleContentChange = useCallback(
     (updatedContent: string) => {
       if (!artifact) return;

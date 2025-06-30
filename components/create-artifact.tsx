@@ -24,13 +24,27 @@ type ArtifactAction<M = any> = {
 
 export type ArtifactToolbarContext = {
   appendMessage: UseChatHelpers['append'];
+  content: string;
+  exportHandler?: ExportHandler;
+};
+
+export type ExportFormat = 'pdf' | 'doc';
+
+export type ExportOptions = {
+  filename?: string;
+  includeMetadata?: boolean;
 };
 
 export type ArtifactToolbarItem = {
   description: string;
   icon: ReactNode;
   onClick: (context: ArtifactToolbarContext) => void;
+  isDisabled?: (context: ArtifactToolbarContext) => boolean;
 };
+
+export interface ExportHandler {
+  exportDocument: (format: ExportFormat, content: string, options?: ExportOptions) => Promise<void>;
+}
 
 interface ArtifactContent<M = any> {
   title: string;
@@ -46,6 +60,7 @@ interface ArtifactContent<M = any> {
   isLoading: boolean;
   metadata: M;
   setMetadata: Dispatch<SetStateAction<M>>;
+  exportHandler?: ExportHandler;
 }
 
 interface InitializeParameters<M = any> {
@@ -65,6 +80,7 @@ type ArtifactConfig<T extends string, M = any> = {
     setArtifact: Dispatch<SetStateAction<UIArtifact>>;
     streamPart: DataStreamDelta;
   }) => void;
+  exportHandler?: ExportHandler;
 };
 
 export class Artifact<T extends string, M = any> {
@@ -79,6 +95,7 @@ export class Artifact<T extends string, M = any> {
     setArtifact: Dispatch<SetStateAction<UIArtifact>>;
     streamPart: DataStreamDelta;
   }) => void;
+  readonly exportHandler?: ExportHandler;
 
   constructor(config: ArtifactConfig<T, M>) {
     this.kind = config.kind;
@@ -88,5 +105,6 @@ export class Artifact<T extends string, M = any> {
     this.toolbar = config.toolbar || [];
     this.initialize = config.initialize || (async () => ({}));
     this.onStreamPart = config.onStreamPart;
+    this.exportHandler = config.exportHandler;
   }
 }

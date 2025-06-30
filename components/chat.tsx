@@ -2,7 +2,7 @@
 
 import type { Attachment, Message } from 'ai';
 import { useChat } from '@ai-sdk/react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import useSWR, { useSWRConfig } from 'swr';
 import { ChatHeader } from '@/components/chat-header';
 import type { Vote } from '@/lib/db/schema';
@@ -13,7 +13,6 @@ import { Messages } from './messages';
 import { VisibilityType } from './visibility-selector';
 import { useArtifactSelector } from '@/hooks/use-artifact';
 import { toast } from 'sonner';
-import { FileSelectionPanel } from '@/components/file-selection-panel';
 import { getFileContent } from '@/lib/utils/file-helpers';
 
 export function Chat({
@@ -44,6 +43,7 @@ export function Chat({
     stop,
     reload,
     error,
+    data,
   } = useChat({
     id,
     body: { id, selectedChatModel: selectedChatModel },
@@ -114,6 +114,7 @@ export function Chat({
             selectedVisibilityType={selectedVisibilityType}
             isReadonly={isReadonly}
           />
+          
           <Messages
             chatId={id}
             isLoading={isLoading}
@@ -142,19 +143,6 @@ export function Chat({
             )}
           </form>
         </div>
-
-        {!isReadonly && (
-          <div className="hidden md:block w-64 shrink-0">
-            <FileSelectionPanel
-              selectedTemplateFile={selectedTemplateFile}
-              setSelectedTemplateFile={setSelectedTemplateFile}
-              selectedSourceFiles={selectedSourceFiles}
-              setSelectedSourceFiles={setSelectedSourceFiles}
-              isLoading={isLoading}
-              setInput={setInput}
-            />
-          </div>
-        )}
       </div>
 
       <Artifact

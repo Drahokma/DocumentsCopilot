@@ -20,31 +20,20 @@ export const Overview = () => {
           <MessageIcon size={32} />
         </p>
         <p>
-          This is an{' '}
-          <Link
-            className="font-medium underline underline-offset-4"
-            href="https://github.com/vercel/ai-chatbot"
-            target="_blank"
-          >
-            open source
-          </Link>{' '}
-          chatbot template built with Next.js and the AI SDK by Vercel. It uses
-          the{' '}
-          <code className="rounded-md bg-muted px-1 py-0.5">streamText</code>{' '}
-          function in the server and the{' '}
-          <code className="rounded-md bg-muted px-1 py-0.5">useChat</code> hook
-          on the client to create a seamless chat experience.
+          Welcome to EmbedIT Document Copilot, an intelligent document generation system. 
+          Upload a template document and source files, and the copilot will automatically 
+          generate a complete document by embedding relevant information from your source 
+          files into the template structure.
         </p>
         <p>
-          You can learn more about the AI SDK by visiting the{' '}
-          <Link
-            className="font-medium underline underline-offset-4"
-            href="https://sdk.vercel.ai/docs"
-            target="_blank"
-          >
-            docs
-          </Link>
-          .
+          To get started, use the file selection panel on the right to upload your template 
+          document and source files. The template should contain placeholders that the copilot 
+          will replace with relevant content from your source files.
+        </p>
+        <p>
+          The document copilot analyzes your template's structure and placeholders, then 
+          intelligently fills them with the most relevant information from your source files, 
+          creating a professionally formatted document in seconds.
         </p>
       </div>
     </motion.div>

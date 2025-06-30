@@ -1,4 +1,4 @@
-import { Artifact } from '@/components/create-artifact';
+import { Artifact, ExportHandler, ExportFormat, ExportOptions } from '@/components/create-artifact';
 import { DiffView } from '@/components/diffview';
 import { DocumentSkeleton } from '@/components/document-skeleton';
 import { Editor } from '@/components/text-editor';
@@ -9,14 +9,41 @@ import {
   PenIcon,
   RedoIcon,
   UndoIcon,
+  PdfIcon,
+  DocIcon,
 } from '@/components/icons';
 import { Suggestion } from '@/lib/db/schema';
 import { toast } from 'sonner';
 import { getSuggestions } from '../actions';
 
+
 interface TextArtifactMetadata {
   suggestions: Array<Suggestion>;
 }
+
+const textExportHandler: ExportHandler = {
+  exportDocument: async (format: ExportFormat, content: string, options?: ExportOptions) => {
+    try {
+      const blob = new Blob([content], { type: format === 'pdf' ? 'application/pdf' : 'application/msword' });
+      
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = options?.filename || `document.${format}`;
+      
+      document.body.appendChild(a);
+      a.click();
+      
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      toast.success(`Document exported as ${format.toUpperCase()}`);
+    } catch (error) {
+      console.error('Export failed:', error);
+      toast.error(`Failed to export document as ${format.toUpperCase()}`);
+    }
+  }
+};
 
 export const textArtifact = new Artifact<'text', TextArtifactMetadata>({
   kind: 'text',
@@ -40,20 +67,34 @@ export const textArtifact = new Artifact<'text', TextArtifactMetadata>({
       });
     }
 
+    console.log('streamPart', streamPart);
+  
     if (streamPart.type === 'text-delta') {
       setArtifact((draftArtifact) => {
+        if (streamPart.messageId && draftArtifact.documentId === streamPart.messageId) {
+          return {
+            ...draftArtifact,
+            content: draftArtifact.content + (streamPart.content as string),
+            isVisible: true,
+            status: 'streaming',
+          };
+        }
+        
+        const updatedContent = draftArtifact.content + (streamPart.content as string);
         return {
           ...draftArtifact,
-          content: draftArtifact.content + (streamPart.content as string),
-          isVisible:
-            draftArtifact.status === 'streaming' &&
-            draftArtifact.content.length > 400 &&
-            draftArtifact.content.length < 450
-              ? true
-              : draftArtifact.isVisible,
+          content: updatedContent,
+          isVisible: true,
           status: 'streaming',
         };
       });
+    }
+    
+    if (streamPart.type === 'finish') {
+      setArtifact((draftArtifact) => ({
+        ...draftArtifact,
+        status: 'idle',
+      }));
     }
   },
   content: ({
@@ -150,6 +191,30 @@ export const textArtifact = new Artifact<'text', TextArtifactMetadata>({
         toast.success('Copied to clipboard!');
       },
     },
+    {
+      icon: <PdfIcon />,
+      description: 'Export as PDF',
+      onClick: ({ content }) => {
+        if (textExportHandler) {
+          textExportHandler.exportDocument('pdf', content, {
+            filename: 'document.pdf',
+            includeMetadata: false
+          });
+        }
+      },
+    },
+    {
+      icon: <DocIcon />,
+      description: 'Export as DOC',
+      onClick: ({ content }) => {
+        if (textExportHandler) {
+          textExportHandler.exportDocument('doc', content, {
+            filename: 'document.doc',
+            includeMetadata: false
+          });
+        }
+      },
+    },
   ],
   toolbar: [
     {
@@ -175,4 +240,5 @@ export const textArtifact = new Artifact<'text', TextArtifactMetadata>({
       },
     },
   ],
+  exportHandler: textExportHandler,
 });
